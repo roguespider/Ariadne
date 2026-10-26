@@ -2,6 +2,7 @@
 
 import argparse
 import os
+from pathlib import Path
 
 from .core import Assistant
 from .memory import MemoryStore
@@ -27,7 +28,23 @@ def main() -> None:
         default=os.getenv("ARIADNE_MEMORY_DB"),
         help="Optional SQLite path for explicit /remember notes (or ARIADNE_MEMORY_DB)",
     )
+    parser.add_argument(
+        "--workspace",
+        help="Optional directory Ariadne may list and read files from",
+    )
+    parser.add_argument(
+        "--allow-workspace-writes",
+        action="store_true",
+        help="Also allow Ariadne to create and replace text files inside --workspace",
+    )
     args = parser.parse_args()
+    if args.allow_workspace_writes and not args.workspace:
+        parser.error("--allow-workspace-writes requires --workspace")
+    if args.workspace:
+        workspace_path = Path(args.workspace).expanduser()
+        if not workspace_path.is_dir():
+            parser.error("--workspace must be an existing directory")
+        args.workspace = str(workspace_path.resolve())
 
     model = OpenAICompatibleModel(
         base_url=args.base_url,
@@ -36,11 +53,26 @@ def main() -> None:
     )
     memory = MemoryStore(args.memory_db) if args.memory_db else None
     task_manager = TaskManager()
-    tool_registry = build_tool_registry(memory, task_manager)
+
+    def confirm_workspace_write(relative_path: str, replacing: bool) -> bool:
+        action = "replace" if replacing else "create"
+        answer = input(f"Ariadne wants to {action} {relative_path}. Allow? [y/N] ")
+        return answer.strip().casefold() == "y"
+
+    tool_registry = build_tool_registry(
+        memory,
+        task_manager,
+        args.workspace,
+        args.allow_workspace_writes,
+        confirm_workspace_write if args.allow_workspace_writes else None,
+    )
     agent = Assistant(model, tool_registry, task_manager=task_manager)
     print("Ariadne is ready. Type /help for commands.")
     print(f"Endpoint: {args.base_url}  Model: {args.model}")
     print(f"Persistent memory: {'enabled at ' + args.memory_db if memory else 'off'}")
+    print(f"Workspace access: {args.workspace or 'off'}")
+    if args.workspace:
+        print(f"Workspace writes: {'enabled' if args.allow_workspace_writes else 'off'}")
     print(f"Available tools: {', '.join(tool_registry.names)}")
 
     while True:

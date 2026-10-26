@@ -11,6 +11,7 @@ The full adaptive architecture is a proposal, not an implemented system. This st
 - Tool argument validation and limits on tool calls per round and model/tool rounds.
 - Explicit system guidance for honesty, uncertainty, and treating tool results as data.
 - Calculator and UTC-time tools; optional saved-note search.
+- Opt-in workspace file listing and reading, with writing behind a separate CLI flag and per-write user approval; paths are confined to the configured directory, and shell execution and deletion are unavailable.
 - Optional local SQLite notes, disabled unless configured, with user-provided provenance and reversible retirement.
 
 ## Not implemented
@@ -25,7 +26,7 @@ The full adaptive architecture is a proposal, not an implemented system. This st
 ## Suggested next sequence
 
 1. Connect the local model server and confirm that the chosen model can call tools reliably.
-2. Add a repeatable evaluation baseline for planning, tool use, memory retrieval, and failure handling.
+2. Add a repeatable evaluation baseline for planning, workspace tool use, memory retrieval, and failure handling.
 3. Add hardware/resource reporting before background work is introduced.
 4. Build provenance-aware learning records and tested reusable skills.
 5. Consider adapter learning and model growth only after measured gaps justify them.

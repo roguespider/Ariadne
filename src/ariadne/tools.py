@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from .memory import MemoryStore
 from .tasks import TaskManager
+from .workspace import Workspace
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,9 +87,9 @@ class ToolRegistry:
                     raise ValueError(f"argument {key!r} must be {expected}")
             result = tool.handler(arguments)
             rendered = json.dumps(result, ensure_ascii=False, default=str)
-            if len(rendered) > 4000:
+            if len(rendered) > 16000:
                 rendered = json.dumps(
-                    {"truncated": True, "text": rendered[:3500]}, ensure_ascii=False
+                    {"truncated": True, "text": rendered[:15000]}, ensure_ascii=False
                 )
             return rendered, True
         except (json.JSONDecodeError, TypeError, ValueError, ArithmeticError) as exc:
@@ -149,6 +150,9 @@ def _safe_calculate(expression: str) -> dict[str, str]:
 def build_tool_registry(
     memory: MemoryStore | None = None,
     task_manager: TaskManager | None = None,
+    workspace_root: str | None = None,
+    allow_workspace_writes: bool = False,
+    confirm_workspace_write: Callable[[str, bool], bool] | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
@@ -168,6 +172,49 @@ def build_tool_registry(
         {"type": "object", "properties": {}, "additionalProperties": False},
         lambda _args: {"utc": datetime.now(timezone.utc).isoformat(timespec="seconds")},
     )
+
+    if workspace_root is not None:
+        workspace = Workspace(workspace_root, confirm_workspace_write)
+        registry.register(
+            "list_workspace_files",
+            "List entries in one directory inside the configured workspace. Use '.' for its root.",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            lambda args: workspace.list_files(args["path"]),
+        )
+        registry.register(
+            "read_workspace_file",
+            "Read a UTF-8 text file inside the configured workspace (up to 200 KB).",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+            lambda args: workspace.read_file(args["path"]),
+        )
+        if allow_workspace_writes:
+            registry.register(
+                "write_workspace_file",
+                "Write UTF-8 text inside the configured workspace (up to 200 KB). Existing files require overwrite=true. No directories are created.",
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "overwrite": {"type": "boolean"},
+                    },
+                    "required": ["path", "content", "overwrite"],
+                    "additionalProperties": False,
+                },
+                lambda args: workspace.write_file(
+                    args["path"], args["content"], args["overwrite"]
+                ),
+            )
 
     if task_manager is not None:
         registry.register(
